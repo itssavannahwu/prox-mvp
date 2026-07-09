@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Prox</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Helvetica Neue', sans-serif; background: #f2f2f7; color: #1d1d1f; min-height: 100vh; }
+
+/* ── Header ── */
+.header { background: white; padding: 14px 20px; border-bottom: 1px solid #e5e5ea; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+.logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.cfg-btn { background: none; border: none; color: #007aff; font-size: 15px; cursor: pointer; padding: 4px 0; }
+
+/* ── Cards ── */
+.card { background: white; border-radius: 16px; padding: 20px; margin: 12px 16px; }
+.card-title { font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
+
+/* ── Inputs ── */
+.field { margin-bottom: 10px; }
+input[type=text], input[type=email], input[type=tel], input[type=date], input[type=url], input[type=password], textarea, select {
+  width: 100%; padding: 13px 14px; border: 1.5px solid #e5e5ea; border-radius: 12px;
+  font-size: 16px; font-family: inherit; outline: none; background: #f9f9f9; color: #1d1d1f;
+  -webkit-appearance: none; appearance: none;
+}
+input:focus, textarea:focus, select:focus { border-color: #007aff; background: white; }
+textarea { min-height: 90px; resize: vertical; }
+::placeholder { color: #c7c7cc; }
+
+/* ── Scan card button ── */
+.scan-wrap { padding: 16px 16px 4px; }
+.scan-label { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 19px; background: #007aff; color: white; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.scan-label:active { background: #0062cc; }
+.skip-link { text-align: center; padding: 10px 16px; font-size: 14px; color: #007aff; cursor: pointer; }
+
+/* ── Card preview ── */
+#cardPreviewWrap { display: none; padding: 0 16px 4px; }
+#cardPreview { width: 100%; border-radius: 12px; }
+#scanStatus { font-size: 13px; color: #8e8e93; text-align: center; padding: 8px 0; }
+
+/* ── Notes with media buttons ── */
+.notes-wrap { position: relative; }
+.notes-actions { display: flex; gap: 8px; margin-top: 8px; }
+.media-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; border: 1.5px solid #e5e5ea; border-radius: 12px; background: white; font-size: 14px; font-weight: 500; color: #1d1d1f; cursor: pointer; }
+.media-btn:active { background: #f2f2f7; }
+.media-btn.recording { border-color: #ff3b30; color: #ff3b30; background: #fff5f5; }
+.media-btn.processing { border-color: #ff9500; color: #ff9500; }
+
+/* ── Lead temp ── */
+.temp-row { display: flex; gap: 8px; }
+.temp-btn { flex: 1; padding: 13px 6px; border: 2px solid #e5e5ea; border-radius: 12px; background: white; font-size: 14px; font-weight: 600; cursor: pointer; }
+.temp-btn:active { opacity: 0.75; }
+.temp-btn.sel-hot { background: #fff2f0; border-color: #ff3b30; color: #ff3b30; }
+.temp-btn.sel-warm { background: #fffbf0; border-color: #ff9500; color: #ff9500; }
+.temp-btn.sel-cold { background: #f0f5ff; border-color: #007aff; color: #007aff; }
+
+/* ── Checkboxes ── */
+.check-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f2f2f7; cursor: pointer; user-select: none; }
+.check-row:last-of-type { border-bottom: none; }
+.check-box { width: 22px; height: 22px; border: 2px solid #c7c7cc; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: transparent; }
+.check-box.on { background: #007aff; border-color: #007aff; color: white; }
+.check-label { font-size: 15px; line-height: 1.3; }
+
+/* ── Submit ── */
+.submit-btn { display: block; width: calc(100% - 32px); margin: 4px 16px 32px; padding: 18px; background: #1d1d1f; color: white; border: none; border-radius: 16px; font-size: 17px; font-weight: 600; cursor: pointer; }
+.submit-btn:active { background: #3a3a3c; }
+
+/* ── Loading overlay ── */
+#loadingOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 200; }
+.spinner { width: 46px; height: 46px; border: 3px solid rgba(255,255,255,0.25); border-top-color: white; border-radius: 50%; animation: spin 0.75s linear infinite; }
+#loadingMsg { color: white; font-size: 16px; font-weight: 500; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Success screen ── */
+#successScreen { display: none; position: fixed; inset: 0; background: white; flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 200; padding: 32px; text-align: center; }
+.success-icon { font-size: 64px; }
+.success-h { font-size: 24px; font-weight: 700; }
+.success-name { font-size: 18px; font-weight: 600; }
+.success-sub { color: #8e8e93; font-size: 15px; line-height: 1.6; }
+.success-next { margin-top: 28px; padding: 16px 36px; background: #007aff; color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer; }
+
+/* ── Config screen ── */
+#configScreen { display: none; position: fixed; inset: 0; background: #f2f2f7; z-index: 300; overflow-y: auto; padding: 0 0 40px; }
+.cfg-inner { max-width: 520px; margin: 0 auto; padding: 48px 20px 0; }
+.cfg-logo { font-size: 36px; font-weight: 800; letter-spacing: -1px; text-align: center; }
+.cfg-sub { text-align: center; color: #8e8e93; margin: 8px 0 32px; }
+.cfg-card { background: white; border-radius: 16px; padding: 20px; }
+.cfg-label { font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 6px; display: block; }
+.cfg-label:first-child { margin-top: 0; }
+.cfg-note { font-size: 12px; color: #8e8e93; margin-top: 12px; line-height: 1.6; }
+.cfg-save { display: block; width: 100%; padding: 18px; background: #007aff; color: white; border: none; border-radius: 16px; font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<!-- ══ Config Screen ══════════════════════════════════════════════════ -->
+<div id="configScreen">
+  <div class="cfg-inner">
+    <div class="cfg-logo">Prox</div>
+    <div class="cfg-sub">首次設定，只需填一次</div>
+    <div class="cfg-card">
+      <label class="cfg-label">Claude API Key</label>
+      <input id="cfgKey" type="password" placeholder="sk-ant-api03-...">
+      <label class="cfg-label">Make.com Webhook URL</label>
+      <input id="cfgWebhook" type="url" placeholder="https://hook.eu1.make.com/...">
+      <label class="cfg-label">你的公司名稱</label>
+      <input id="cfgCompany" type="text" placeholder="例：Prox Technology">
+      <label class="cfg-label">你的展覽預設名稱（選填）</label>
+      <input id="cfgShowName" type="text" placeholder="例：2026 台北國際自動化工業大展">
+      <p class="cfg-note">API Key 僅儲存在你的裝置，不會傳送至任何第三方。</p>
+    </div>
+    <button class="cfg-save" onclick="saveConfig()">開始使用</button>
+  </div>
+</div>
+
+<!-- ══ Main App ═══════════════════════════════════════════════════════ -->
+<div id="mainApp" style="display:none;">
+  <div class="header">
+    <div class="logo">Prox</div>
+    <button class="cfg-btn" onclick="openConfig()">設定</button>
+  </div>
+
+  <div style="max-width:640px; margin:0 auto; padding-bottom:16px;">
+
+    <!-- 掃名片 -->
+    <div class="scan-wrap">
+      <label class="scan-label" for="cardPhoto">
+        📇 拍攝名片，自動填入資訊
+      </label>
+      <input type="file" id="cardPhoto" accept="image/*" capture="environment" style="display:none" onchange="scanCard(this)">
+    </div>
+    <div class="skip-link" onclick="focusNotes()">略過，手動輸入 →</div>
+
+    <!-- 名片預覽 -->
+    <div id="cardPreviewWrap">
+      <img id="cardPreview" alt="名片">
+      <div id="scanStatus"></div>
+    </div>
+
+    <!-- 聯絡人 -->
+    <div class="card">
+      <div class="card-title">聯絡人資訊</div>
+      <div class="field"><input id="fname" type="text" placeholder="姓名 *"></div>
+      <div class="field"><input id="fcompany" type="text" placeholder="公司名稱 *"></div>
+      <div class="field"><input id="ftitle" type="text" placeholder="職稱"></div>
+      <div class="field"><input id="femail" type="email" placeholder="Email *"></div>
+      <div class="field"><input id="fphone" type="tel" placeholder="電話"></div>
+    </div>
+
+    <!-- 展覽資訊 -->
+    <div class="card">
+      <div class="card-title">展覽資訊</div>
+      <div class="field"><input id="fshow" type="text" placeholder="展覽名稱 *"></div>
+      <div class="field"><input id="fdate" type="date"></div>
+    </div>
+
+    <!-- 現場對話 -->
+    <div class="card">
+      <div class="card-title">現場對話</div>
+      <div class="notes-wrap">
+        <textarea id="fnotes" placeholder="他們的需求是什麼？你們聊了什麼？（越詳細，Email 越準）*"></textarea>
+        <div class="notes-actions">
+          <button class="media-btn" id="micBtn" onclick="toggleVoice()">🎤 語音輸入</button>
+          <label class="media-btn" for="notePhoto" id="photoNoteLbl">📷 拍筆記辨識</label>
+          <input type="file" id="notePhoto" accept="image/*" capture="environment" style="display:none" onchange="scanNote(this)">
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px;">
+        <input id="finterest" type="text" placeholder="對哪些產品 / 服務有興趣？*">
+      </div>
+    </div>
+
+    <!-- Lead 溫度 -->
+    <div class="card">
+      <div class="card-title">Lead 溫度</div>
+      <div class="temp-row">
+        <button class="temp-btn" id="btn-hot"  onclick="setTemp('hot')">🔥 Hot</button>
+        <button class="temp-btn" id="btn-warm" onclick="setTemp('warm')">🌤 Warm</button>
+        <button class="temp-btn" id="btn-cold" onclick="setTemp('cold')">❄️ Cold</button>
+      </div>
+      <div style="margin-top:12px;">
+        <select id="ftimeline">
+          <option value="">預計採購時間（選填）</option>
+          <option value="1個月內">1 個月內</option>
+          <option value="1–3個月">1–3 個月</option>
+          <option value="3–6個月">3–6 個月</option>
+          <option value="半年以上">半年以上</option>
+          <option value="尚不確定">尚不確定</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 跟進方式 -->
+    <div class="card">
+      <div class="card-title">這封信要做什麼？</div>
+      <div class="check-row" onclick="toggleCheck('ck-info')">
+        <div class="check-box on" id="ck-info">✓</div>
+        <span class="check-label">感謝並附上產品資訊</span>
+      </div>
+      <div class="check-row" onclick="toggleCheck('ck-quote')">
+        <div class="check-box" id="ck-quote"></div>
+        <span class="check-label">提供初步報價</span>
+      </div>
+      <div class="check-row" onclick="toggleCheck('ck-meeting')">
+        <div class="check-box" id="ck-meeting"></div>
+        <span class="check-label">邀約後續視訊 / 會議</span>
+      </div>
+      <div style="margin-top:14px;">
+        <textarea id="fmemo" placeholder="其他備註（選填）" style="min-height:70px;"></textarea>
+      </div>
+    </div>
+
+    <button class="submit-btn" onclick="submitForm()">✉️ 送出，AI 自動生成並寄出 Email</button>
+
+  </div>
+</div>
+
+<!-- ══ Loading ════════════════════════════════════════════════════════ -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div id="loadingMsg">處理中...</div>
+</div>
+
+<!-- ══ Success ════════════════════════════════════════════════════════ -->
+<div id="successScreen">
+  <div class="success-icon">✅</div>
+  <div class="success-h">送出成功</div>
+  <div class="success-name" id="sName"></div>
+  <div class="success-sub">AI Email 正在生成中，<br>幾分鐘內會自動寄出。</div>
+  <button class="success-next" onclick="resetForm()">繼續下一位 →</button>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let selectedTemp = '';
+let checks = { 'ck-info': true, 'ck-quote': false, 'ck-meeting': false };
+let recognition = null;
+let isRecording = false;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const key = localStorage.getItem('prox_key');
+  const hook = localStorage.getItem('prox_hook');
+  if (!key || !hook) {
+    document.getElementById('configScreen').style.display = 'block';
+  } else {
+    document.getElementById('mainApp').style.display = 'block';
+    initApp();
+  }
+  renderChecks();
+});
+
+function initApp() {
+  document.getElementById('fdate').value = new Date().toISOString().split('T')[0];
+  const savedShow = localStorage.getItem('prox_show');
+  if (savedShow) document.getElementById('fshow').value = savedShow;
+}
+
+// ── Config ─────────────────────────────────────────────────────────────────
+function saveConfig() {
+  const key  = document.getElementById('cfgKey').value.trim();
+  const hook = document.getElementById('cfgWebhook').value.trim();
+  const co   = document.getElementById('cfgCompany').value.trim();
+  const show = document.getElementById('cfgShowName').value.trim();
+  if (!key || !hook || !co) { alert('請填寫 API Key、Webhook URL 和公司名稱'); return; }
+  localStorage.setItem('prox_key',  key);
+  localStorage.setItem('prox_hook', hook);
+  localStorage.setItem('prox_co',   co);
+  if (show) localStorage.setItem('prox_show', show);
+  document.getElementById('configScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  initApp();
+}
+
+function openConfig() {
+  document.getElementById('cfgKey').value     = localStorage.getItem('prox_key')  || '';
+  document.getElementById('cfgWebhook').value = localStorage.getItem('prox_hook') || '';
+  document.getElementById('cfgCompany').value = localStorage.getItem('prox_co')   || '';
+  document.getElementById('cfgShowName').value= localStorage.getItem('prox_show') || '';
+  document.getElementById('configScreen').style.display = 'block';
+}
+
+// ── UI helpers ──────────────────────────────────────────────────────────────
+function focusNotes() { document.getElementById('fnotes').scrollIntoView({ behavior: 'smooth' }); }
+
+function setTemp(t) {
+  selectedTemp = t;
+  ['hot','warm','cold'].forEach(x => {
+    document.getElementById('btn-' + x).className = 'temp-btn' + (x === t ? ' sel-' + x : '');
+  });
+}
+
+function toggleCheck(id) {
+  checks[id] = !checks[id];
+  renderChecks();
+}
+
+function renderChecks() {
+  Object.entries(checks).forEach(([id, on]) => {
+    const el = document.getElementById(id);
+    el.className = 'check-box' + (on ? ' on' : '');
+    el.textContent = on ? '✓' : '';
+  });
+}
+
+function showLoading(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+  document.getElementById('loadingOverlay').style.display = 'flex';
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+// ── Claude Vision helper ────────────────────────────────────────────────────
+async function callClaudeVision(base64Data, mimeType, prompt) {
+  const key = localStorage.getItem('prox_key');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 600,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.content[0].text.trim();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve({ base64: e.target.result.split(',')[1], mime: file.type });
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// ── Business card scan ──────────────────────────────────────────────────────
+async function scanCard(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const objectUrl = URL.createObjectURL(file);
+  document.getElementById('cardPreview').src = objectUrl;
+  document.getElementById('cardPreviewWrap').style.display = 'block';
+  document.getElementById('scanStatus').textContent = '辨識中...';
+
+  showLoading('AI 辨識名片中...');
+  try {
+    const { base64, mime } = await fileToBase64(file);
+    const result = await callClaudeVision(base64, mime,
+      '這是一張名片。擷取資訊並以 JSON 格式回傳（無該欄位回傳空字串）：{"name":"","company":"","title":"","email":"","phone":""}。只回傳 JSON。');
+    const info = JSON.parse(result);
+    if (info.name)    document.getElementById('fname').value    = info.name;
+    if (info.company) document.getElementById('fcompany').value = info.company;
+    if (info.title)   document.getElementById('ftitle').value   = info.title;
+    if (info.email)   document.getElementById('femail').value   = info.email;
+    if (info.phone)   document.getElementById('fphone').value   = info.phone;
+    document.getElementById('scanStatus').textContent = '✅ 辨識完成，請確認後補上對話備註';
+    hideLoading();
+    document.getElementById('fnotes').scrollIntoView({ behavior: 'smooth' });
+  } catch(e) {
+    hideLoading();
+    document.getElementById('scanStatus').textContent = '⚠️ 辨識失敗，請手動輸入';
+    console.error(e);
+  }
+}
+
+// ── Handwritten note scan ───────────────────────────────────────────────────
+async function scanNote(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = document.getElementById('photoNoteLbl');
+  btn.classList.add('processing');
+  btn.textContent = '⏳ 辨識中...';
+  showLoading('AI 辨識手寫筆記中...');
+  try {
+    const { base64, mime } = await fileToBase64(file);
+    const result = await callClaudeVision(base64, mime,
+      '這是一張手寫筆記或拍照文字。請將照片中的所有文字轉錄成繁體中文純文字，保持原意，不要添加任何說明或格式。');
+    const current = document.getElementById('fnotes').value;
+    document.getElementById('fnotes').value = current ? current + '\n' + result : result;
+    hideLoading();
+    btn.classList.remove('processing');
+    btn.textContent = '📷 拍筆記辨識';
+  } catch(e) {
+    hideLoading();
+    btn.classList.remove('processing');
+    btn.textContent = '📷 拍筆記辨識';
+    alert('辨識失敗，請重試');
+    console.error(e);
+  }
+  input.value = '';
+}
+
+// ── Voice input ─────────────────────────────────────────────────────────────
+function toggleVoice() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) { alert('你的瀏覽器不支援語音輸入，建議使用 Chrome 或 Safari'); return; }
+
+  if (isRecording) {
+    recognition.stop();
+    return;
+  }
+
+  recognition = new SpeechRec();
+  recognition.lang = 'zh-TW';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  const btn = document.getElementById('micBtn');
+  const textarea = document.getElementById('fnotes');
+  const baseText = textarea.value;
+
+  recognition.onstart = () => {
+    isRecording = true;
+    btn.classList.add('recording');
+    btn.textContent = '🔴 停止錄音';
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    textarea.value = baseText + (baseText && final ? '\n' : '') + final + interim;
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.textContent = '🎤 語音輸入';
+  };
+
+  recognition.onerror = (e) => {
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.textContent = '🎤 語音輸入';
+    if (e.error !== 'aborted') alert('語音辨識錯誤：' + e.error);
+  };
+
+  recognition.start();
+}
+
+// ── Submit ──────────────────────────────────────────────────────────────────
+async function submitForm() {
+  if (isRecording) recognition.stop();
+
+  const name     = document.getElementById('fname').value.trim();
+  const company  = document.getElementById('fcompany').value.trim();
+  const email    = document.getElementById('femail').value.trim();
+  const notes    = document.getElementById('fnotes').value.trim();
+  const interest = document.getElementById('finterest').value.trim();
+  const show     = document.getElementById('fshow').value.trim();
+
+  if (!name)     { alert('請填寫聯絡人姓名'); return; }
+  if (!company)  { alert('請填寫公司名稱'); return; }
+  if (!email)    { alert('請填寫 Email'); return; }
+  if (!notes)    { alert('請填寫現場對話內容'); return; }
+  if (!interest) { alert('請填寫有興趣的產品'); return; }
+  if (!show)     { alert('請填寫展覽名稱'); return; }
+  if (!selectedTemp) { alert('請選擇 Lead 溫度'); return; }
+
+  const followUp = Object.entries({ 'ck-info': '感謝並附上產品資訊', 'ck-quote': '提供初步報價', 'ck-meeting': '邀約後續會議' })
+    .filter(([k]) => checks[k]).map(([, v]) => v).join('、');
+
+  const payload = {
+    name, company,
+    jobTitle:  document.getElementById('ftitle').value.trim(),
+    email,
+    phone:     document.getElementById('fphone').value.trim(),
+    showName:  show,
+    showDate:  document.getElementById('fdate').value,
+    notes, interest,
+    leadTemp:  selectedTemp,
+    timeline:  document.getElementById('ftimeline').value,
+    followUp,
+    memo:      document.getElementById('fmemo').value.trim(),
+    ourCompany: localStorage.getItem('prox_co') || '',
+    submittedAt: new Date().toISOString()
+  };
+
+  showLoading('送出中...');
+  try {
+    await fetch(localStorage.getItem('prox_hook'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      mode: 'no-cors'
+    });
+    hideLoading();
+    document.getElementById('sName').textContent = name + '（' + company + '）';
+    document.getElementById('successScreen').style.display = 'flex';
+  } catch(e) {
+    hideLoading();
+    alert('送出失敗，請確認網路連線');
+    console.error(e);
+  }
+}
+
+// ── Reset ───────────────────────────────────────────────────────────────────
+function resetForm() {
+  document.getElementById('successScreen').style.display = 'none';
+  document.getElementById('cardPreviewWrap').style.display = 'none';
+  ['fname','fcompany','ftitle','femail','fphone','fnotes','finterest','fmemo'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('fdate').value = new Date().toISOString().split('T')[0];
+  const savedShow = localStorage.getItem('prox_show');
+  document.getElementById('fshow').value = savedShow || '';
+  document.getElementById('ftimeline').value = '';
+  selectedTemp = '';
+  ['hot','warm','cold'].forEach(t => { document.getElementById('btn-' + t).className = 'temp-btn'; });
+  checks = { 'ck-info': true, 'ck-quote': false, 'ck-meeting': false };
+  renderChecks();
+  document.getElementById('cardPhoto').value = '';
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>
