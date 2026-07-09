@@ -340,12 +340,26 @@ async function callClaudeVision(base64Data, mimeType, prompt) {
   return data.content[0].text.trim();
 }
 
-function fileToBase64(file) {
+// 壓縮圖片到最大 1200px，JPEG 80%，避免超過 API 限制
+function compressImage(file, maxPx = 1200) {
   return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => resolve({ base64: e.target.result.split(',')[1], mime: file.type });
-    r.onerror = reject;
-    r.readAsDataURL(file);
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve({ base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
 
@@ -361,7 +375,7 @@ async function scanCard(input) {
 
   showLoading('AI 辨識名片中...');
   try {
-    const { base64, mime } = await fileToBase64(file);
+    const { base64, mime } = await compressImage(file);
     const result = await callClaudeVision(base64, mime,
       '這是一張名片。擷取資訊並以 JSON 格式回傳（無該欄位回傳空字串）：{"name":"","company":"","title":"","email":"","phone":""}。只回傳 JSON。');
     const info = JSON.parse(result);
@@ -375,8 +389,8 @@ async function scanCard(input) {
     document.getElementById('fnotes').scrollIntoView({ behavior: 'smooth' });
   } catch(e) {
     hideLoading();
-    document.getElementById('scanStatus').textContent = '⚠️ 辨識失敗，請手動輸入';
-    console.error(e);
+    document.getElementById('scanStatus').textContent = '⚠️ 辨識失敗：' + e.message;
+    console.error('scanCard error:', e);
   }
 }
 
@@ -389,7 +403,7 @@ async function scanNote(input) {
   btn.textContent = '⏳ 辨識中...';
   showLoading('AI 辨識手寫筆記中...');
   try {
-    const { base64, mime } = await fileToBase64(file);
+    const { base64, mime } = await compressImage(file);
     const result = await callClaudeVision(base64, mime,
       '這是一張手寫筆記或拍照文字。請將照片中的所有文字轉錄成繁體中文純文字，保持原意，不要添加任何說明或格式。');
     const current = document.getElementById('fnotes').value;
