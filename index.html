@@ -356,6 +356,35 @@ function compressImage(file, maxPx = 1200) {
   });
 }
 
+// ── 名片文字解析 ────────────────────────────────────────────────────────────
+function parseCardText(rawText) {
+  const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
+
+  const emailRe    = /[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i;
+  const phoneRe    = /(?:09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0[2-9]\d?[-\s]?\d{3,4}[-\s]?\d{3,4})/;
+  const urlRe      = /https?:\/\/|www\./i;
+  const addressRe  = /[市縣區鄉鎮路街巷弄號樓]/;
+  const skipRe     = /LINE\s*ID|WeChat|Wechat|Skype|Tel:|Fax:|傳真|分機|ext/i;
+
+  const email = (rawText.match(emailRe) || [])[0]?.trim() || '';
+  const phone = (rawText.match(phoneRe) || [])[0]?.trim() || '';
+
+  const candidates = lines.filter(l =>
+    !emailRe.test(l) && !phoneRe.test(l) && !urlRe.test(l) &&
+    !addressRe.test(l) && !skipRe.test(l) && !/^\d+$/.test(l)
+  );
+
+  const companySuffix = /(?:科技|有限公司|股份|企業|工業|集團|實業|貿易|機械|電子|化工|食品|材料|生技|醫療|資訊|數位|網路|設計|廣告|行銷|媒體|文化|教育|建設|開發|投資|金融|顧問|事務所|研究院)/;
+  const titleKeyword  = /(?:總裁|董事長|董事|執行長|總經理|副總|協理|總監|經理|副理|主任|主管|工程師|設計師|業務|顧問|分析師|研究員|行銷|專員|助理|社長|所長|院長|廠長|組長|課長|部長|處長)/;
+  const chineseNameRe = /^[一-鿿]{2,4}$/;
+
+  const company = candidates.find(l => companySuffix.test(l)) || '';
+  const title   = candidates.find(l => titleKeyword.test(l))  || '';
+  const name    = candidates.find(l => chineseNameRe.test(l) && l !== company && l !== title) || '';
+
+  return { email, phone, name, company, title, lines };
+}
+
 // ── Business card scan ──────────────────────────────────────────────────────
 async function scanCard(input) {
   const file = input.files[0];
@@ -369,18 +398,18 @@ async function scanCard(input) {
   try {
     const { base64 } = await compressImage(file);
     const rawText = await ocrWithOcrSpace(base64);
+    const { email, phone, name, company, title, lines } = parseCardText(rawText);
 
-    const emailMatch = rawText.match(/[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i);
-    const phoneMatch = rawText.match(/(\+?886[-\s]?)?0?[2-9]\d[\s\-\(\)]{0,3}\d{3,4}[\s\-]?\d{3,4}/);
-    const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
-
-    if (emailMatch) document.getElementById('femail').value = emailMatch[0].trim();
-    if (phoneMatch) document.getElementById('fphone').value = phoneMatch[0].replace(/\s/g,'').trim();
+    if (email)   document.getElementById('femail').value   = email;
+    if (phone)   document.getElementById('fphone').value   = phone;
+    if (name)    document.getElementById('fname').value    = name;
+    if (company) document.getElementById('fcompany').value = company;
+    if (title)   document.getElementById('ftitle').value   = title;
 
     const rawWrap = document.getElementById('rawTextWrap');
-    rawWrap.textContent = '📋 辨識文字（對照填入姓名、公司）：\n\n' + lines.join('\n');
+    rawWrap.textContent = '📋 辨識文字（可對照確認）：\n\n' + lines.join('\n');
     rawWrap.style.display = 'block';
-    document.getElementById('scanStatus').textContent = '✅ Email / 電話自動填入，姓名公司請對照上方文字手動補填';
+    document.getElementById('scanStatus').textContent = '✅ 資料已自動填入，請確認並補填空白欄位';
     hideLoading();
     document.getElementById('fname').scrollIntoView({ behavior: 'smooth' });
   } catch(e) {
