@@ -100,8 +100,8 @@ textarea { min-height: 90px; resize: vertical; }
     <div class="cfg-logo">Prox</div>
     <div class="cfg-sub">首次設定，只需填一次</div>
     <div class="cfg-card">
-      <label class="cfg-label">Claude API Key</label>
-      <input id="cfgKey" type="password" placeholder="sk-ant-api03-...">
+      <label class="cfg-label">Gemini API Key</label>
+      <input id="cfgKey" type="password" placeholder="AIza...">
       <label class="cfg-label">Make.com Webhook URL</label>
       <input id="cfgWebhook" type="url" placeholder="https://hook.eu1.make.com/...">
       <label class="cfg-label">你的公司名稱</label>
@@ -312,32 +312,25 @@ function hideLoading() {
   document.getElementById('loadingOverlay').style.display = 'none';
 }
 
-// ── Claude Vision helper ────────────────────────────────────────────────────
+// ── Gemini Vision helper ────────────────────────────────────────────────────
 async function callClaudeVision(base64Data, mimeType, prompt) {
   const key = localStorage.getItem('prox_key');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
-          { type: 'text', text: prompt }
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mimeType, data: base64Data } },
+          { text: prompt }
         ]
       }]
     })
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.content[0].text.trim();
+  return data.candidates[0].content.parts[0].text.trim();
 }
 
 // 壓縮圖片到最大 1200px，JPEG 80%，避免超過 API 限制
