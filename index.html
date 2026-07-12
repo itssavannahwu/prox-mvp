@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Prox</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Helvetica Neue', sans-serif; background: #f2f2f7; color: #1d1d1f; min-height: 100vh; }
@@ -124,20 +123,19 @@ textarea { min-height: 90px; resize: vertical; }
 
   <div style="max-width:640px; margin:0 auto; padding-bottom:16px;">
 
-    <!-- 掃名片 -->
+    <!-- 名片掃描區 -->
     <div class="scan-wrap">
       <label class="scan-label" for="cardPhoto">
-        📇 拍攝名片，自動填入資訊
+        📷 拍名片，AI 自動填入
       </label>
       <input type="file" id="cardPhoto" accept="image/*" capture="environment" style="display:none" onchange="scanCard(this)">
     </div>
     <div class="skip-link" onclick="focusNotes()">略過，手動輸入 →</div>
 
-    <!-- 名片預覽 -->
-    <div id="cardPreviewWrap">
-      <img id="cardPreview" alt="名片">
-      <div id="scanStatus"></div>
-      <div id="rawTextWrap" style="display:none; background:#f9f9f9; border:1px solid #e5e5ea; border-radius:12px; padding:12px; margin-top:8px; font-size:13px; color:#3a3a3c; line-height:1.6; white-space:pre-wrap; word-break:break-all;"></div>
+    <!-- 解析結果提示 -->
+    <div id="cardPreviewWrap" style="display:none; padding: 0 16px 4px;">
+      <div id="scanStatus" style="font-size:13px; color:#8e8e93; text-align:center; padding:8px 0;"></div>
+      <div id="rawTextWrap" style="display:none; background:#f9f9f9; border:1px solid #e5e5ea; border-radius:12px; padding:12px; font-size:13px; color:#3a3a3c; line-height:1.6; white-space:pre-wrap; word-break:break-all;"></div>
     </div>
 
     <!-- 聯絡人 -->
@@ -313,29 +311,26 @@ function hideLoading() {
   document.getElementById('loadingOverlay').style.display = 'none';
 }
 
-// ── Tesseract OCR（不需 API key，跑在裝置上）──────────────────────────────
-async function ocrImage(imageUrl) {
-  const result = await Tesseract.recognize(imageUrl, 'chi_tra+eng', {
-    logger: m => {
-      if (m.status === 'loading language traineddata') {
-        showLoading('下載語言包（首次約 15 秒）...');
-      } else if (m.status === 'recognizing text') {
-        showLoading('辨識中 ' + Math.round(m.progress * 100) + '%');
-      }
-    }
-  });
-  return result.data.text;
-}
+// ── OCR.Space 辨識（免費 Server 端，不需下載語言包）────────────────────────
+async function ocrWithOcrSpace(base64) {
+  const formData = new FormData();
+  formData.append('base64Image', 'data:image/jpeg;base64,' + base64);
+  formData.append('language', 'cht');
+  formData.append('isOverlayRequired', 'false');
+  formData.append('OCREngine', '2');
+  formData.append('detectOrientation', 'true');
 
-function parseCardText(rawText) {
-  const emailMatch = rawText.match(/[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i);
-  const phoneMatch = rawText.match(/(\+?886[-\s]?)?0?[2-9]\d[\s-]?\d{3,4}[\s-]?\d{3,4}/);
-  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-  return {
-    email: emailMatch ? emailMatch[0].trim() : '',
-    phone: phoneMatch ? phoneMatch[0].replace(/\s/g, '').trim() : '',
-    lines
-  };
+  const res = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: { apikey: 'helloworld' },
+    body: formData
+  });
+  if (!res.ok) throw new Error('OCR 服務暫時無法使用，請稍後再試');
+  const data = await res.json();
+  if (data.IsErroredOnProcessing) throw new Error(data.ErrorMessage?.[0] || 'OCR 辨識失敗');
+  const text = data.ParsedResults?.[0]?.ParsedText || '';
+  if (!text.trim()) throw new Error('未辨識到文字，請確認照片清晰，光線充足');
+  return text;
 }
 
 // 壓縮圖片到最大 1200px，JPEG 80%，避免超過 API 限制
@@ -366,26 +361,26 @@ async function scanCard(input) {
   const file = input.files[0];
   if (!file) return;
 
-  const objectUrl = URL.createObjectURL(file);
-  document.getElementById('cardPreview').src = objectUrl;
   document.getElementById('cardPreviewWrap').style.display = 'block';
   document.getElementById('rawTextWrap').style.display = 'none';
-  document.getElementById('scanStatus').textContent = '準備辨識...';
+  document.getElementById('scanStatus').textContent = '辨識中...';
+  showLoading('AI 辨識名片中...');
 
-  showLoading('準備辨識名片...');
   try {
-    const rawText = await ocrImage(objectUrl);
-    const { email, phone, lines } = parseCardText(rawText);
+    const { base64 } = await compressImage(file);
+    const rawText = await ocrWithOcrSpace(base64);
 
-    if (email) document.getElementById('femail').value = email;
-    if (phone) document.getElementById('fphone').value = phone;
+    const emailMatch = rawText.match(/[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i);
+    const phoneMatch = rawText.match(/(\+?886[-\s]?)?0?[2-9]\d[\s\-\(\)]{0,3}\d{3,4}[\s\-]?\d{3,4}/);
+    const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
 
-    // 顯示 OCR 原始文字供手動參考
+    if (emailMatch) document.getElementById('femail').value = emailMatch[0].trim();
+    if (phoneMatch) document.getElementById('fphone').value = phoneMatch[0].replace(/\s/g,'').trim();
+
     const rawWrap = document.getElementById('rawTextWrap');
-    rawWrap.textContent = '📋 辨識文字（可長按複製）：\n\n' + lines.join('\n');
+    rawWrap.textContent = '📋 辨識文字（對照填入姓名、公司）：\n\n' + lines.join('\n');
     rawWrap.style.display = 'block';
-
-    document.getElementById('scanStatus').textContent = '✅ Email / 電話已自動填入，姓名公司請對照上方文字手動填寫';
+    document.getElementById('scanStatus').textContent = '✅ Email / 電話自動填入，姓名公司請對照上方文字手動補填';
     hideLoading();
     document.getElementById('fname').scrollIntoView({ behavior: 'smooth' });
   } catch(e) {
@@ -393,6 +388,7 @@ async function scanCard(input) {
     document.getElementById('scanStatus').textContent = '⚠️ 辨識失敗：' + e.message;
     console.error('scanCard error:', e);
   }
+  input.value = '';
 }
 
 // ── Handwritten note scan ───────────────────────────────────────────────────
@@ -404,9 +400,8 @@ async function scanNote(input) {
   btn.textContent = '⏳ 辨識中...';
   showLoading('AI 辨識手寫筆記中...');
   try {
-    const { base64, mime } = await compressImage(file);
-    const result = await callClaudeVision(base64, mime,
-      '這是一張手寫筆記或拍照文字。請將照片中的所有文字轉錄成繁體中文純文字，保持原意，不要添加任何說明或格式。');
+    const { base64 } = await compressImage(file);
+    const result = await ocrWithOcrSpace(base64);
     const current = document.getElementById('fnotes').value;
     document.getElementById('fnotes').value = current ? current + '\n' + result : result;
     hideLoading();
