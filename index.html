@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Prox</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Helvetica Neue', sans-serif; background: #f2f2f7; color: #1d1d1f; min-height: 100vh; }
@@ -100,8 +101,8 @@ textarea { min-height: 90px; resize: vertical; }
     <div class="cfg-logo">Prox</div>
     <div class="cfg-sub">首次設定，只需填一次</div>
     <div class="cfg-card">
-      <label class="cfg-label">Gemini API Key</label>
-      <input id="cfgKey" type="password" placeholder="AIza...">
+      <label class="cfg-label">API Key（目前不需要，留空即可）</label>
+      <input id="cfgKey" type="password" placeholder="留空">
       <label class="cfg-label">Make.com Webhook URL</label>
       <input id="cfgWebhook" type="url" placeholder="https://hook.eu1.make.com/...">
       <label class="cfg-label">你的公司名稱</label>
@@ -136,6 +137,7 @@ textarea { min-height: 90px; resize: vertical; }
     <div id="cardPreviewWrap">
       <img id="cardPreview" alt="名片">
       <div id="scanStatus"></div>
+      <div id="rawTextWrap" style="display:none; background:#f9f9f9; border:1px solid #e5e5ea; border-radius:12px; padding:12px; margin-top:8px; font-size:13px; color:#3a3a3c; line-height:1.6; white-space:pre-wrap; word-break:break-all;"></div>
     </div>
 
     <!-- 聯絡人 -->
@@ -240,9 +242,8 @@ let isRecording = false;
 
 // ── Init ───────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  const key = localStorage.getItem('prox_key');
   const hook = localStorage.getItem('prox_hook');
-  if (!key || !hook) {
+  if (!hook) {
     document.getElementById('configScreen').style.display = 'block';
   } else {
     document.getElementById('mainApp').style.display = 'block';
@@ -263,7 +264,7 @@ function saveConfig() {
   const hook = document.getElementById('cfgWebhook').value.trim();
   const co   = document.getElementById('cfgCompany').value.trim();
   const show = document.getElementById('cfgShowName').value.trim();
-  if (!key || !hook || !co) { alert('請填寫 API Key、Webhook URL 和公司名稱'); return; }
+  if (!hook || !co) { alert('請填寫 Webhook URL 和公司名稱'); return; }
   localStorage.setItem('prox_key',  key);
   localStorage.setItem('prox_hook', hook);
   localStorage.setItem('prox_co',   co);
@@ -312,25 +313,29 @@ function hideLoading() {
   document.getElementById('loadingOverlay').style.display = 'none';
 }
 
-// ── Gemini Vision helper ────────────────────────────────────────────────────
-async function callClaudeVision(base64Data, mimeType, prompt) {
-  const key = localStorage.getItem('prox_key');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${key}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: mimeType, data: base64Data } },
-          { text: prompt }
-        ]
-      }]
-    })
+// ── Tesseract OCR（不需 API key，跑在裝置上）──────────────────────────────
+async function ocrImage(imageUrl) {
+  const result = await Tesseract.recognize(imageUrl, 'chi_tra+eng', {
+    logger: m => {
+      if (m.status === 'loading language traineddata') {
+        showLoading('下載語言包（首次約 15 秒）...');
+      } else if (m.status === 'recognizing text') {
+        showLoading('辨識中 ' + Math.round(m.progress * 100) + '%');
+      }
+    }
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.candidates[0].content.parts[0].text.trim();
+  return result.data.text;
+}
+
+function parseCardText(rawText) {
+  const emailMatch = rawText.match(/[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i);
+  const phoneMatch = rawText.match(/(\+?886[-\s]?)?0?[2-9]\d[\s-]?\d{3,4}[\s-]?\d{3,4}/);
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  return {
+    email: emailMatch ? emailMatch[0].trim() : '',
+    phone: phoneMatch ? phoneMatch[0].replace(/\s/g, '').trim() : '',
+    lines
+  };
 }
 
 // 壓縮圖片到最大 1200px，JPEG 80%，避免超過 API 限制
@@ -364,22 +369,25 @@ async function scanCard(input) {
   const objectUrl = URL.createObjectURL(file);
   document.getElementById('cardPreview').src = objectUrl;
   document.getElementById('cardPreviewWrap').style.display = 'block';
-  document.getElementById('scanStatus').textContent = '辨識中...';
+  document.getElementById('rawTextWrap').style.display = 'none';
+  document.getElementById('scanStatus').textContent = '準備辨識...';
 
-  showLoading('AI 辨識名片中...');
+  showLoading('準備辨識名片...');
   try {
-    const { base64, mime } = await compressImage(file);
-    const result = await callClaudeVision(base64, mime,
-      '這是一張名片。擷取資訊並以 JSON 格式回傳（無該欄位回傳空字串）：{"name":"","company":"","title":"","email":"","phone":""}。只回傳 JSON。');
-    const info = JSON.parse(result);
-    if (info.name)    document.getElementById('fname').value    = info.name;
-    if (info.company) document.getElementById('fcompany').value = info.company;
-    if (info.title)   document.getElementById('ftitle').value   = info.title;
-    if (info.email)   document.getElementById('femail').value   = info.email;
-    if (info.phone)   document.getElementById('fphone').value   = info.phone;
-    document.getElementById('scanStatus').textContent = '✅ 辨識完成，請確認後補上對話備註';
+    const rawText = await ocrImage(objectUrl);
+    const { email, phone, lines } = parseCardText(rawText);
+
+    if (email) document.getElementById('femail').value = email;
+    if (phone) document.getElementById('fphone').value = phone;
+
+    // 顯示 OCR 原始文字供手動參考
+    const rawWrap = document.getElementById('rawTextWrap');
+    rawWrap.textContent = '📋 辨識文字（可長按複製）：\n\n' + lines.join('\n');
+    rawWrap.style.display = 'block';
+
+    document.getElementById('scanStatus').textContent = '✅ Email / 電話已自動填入，姓名公司請對照上方文字手動填寫';
     hideLoading();
-    document.getElementById('fnotes').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('fname').scrollIntoView({ behavior: 'smooth' });
   } catch(e) {
     hideLoading();
     document.getElementById('scanStatus').textContent = '⚠️ 辨識失敗：' + e.message;
