@@ -145,7 +145,8 @@ textarea { min-height: 90px; resize: vertical; }
       <div class="field"><input id="fcompany" type="text" placeholder="公司名稱 *"></div>
       <div class="field"><input id="ftitle" type="text" placeholder="職稱"></div>
       <div class="field"><input id="femail" type="email" placeholder="Email *"></div>
-      <div class="field"><input id="fphone" type="tel" placeholder="電話"></div>
+      <div class="field"><input id="fphone" type="tel" placeholder="手機"></div>
+      <div class="field"><input id="fphone2" type="tel" placeholder="公司電話"></div>
     </div>
 
     <!-- 展覽資訊 -->
@@ -361,16 +362,19 @@ function parseCardText(rawText) {
   const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
 
   const emailRe    = /[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}/i;
-  const phoneRe    = /(?:09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0[2-9]\d?[-\s]?\d{3,4}[-\s]?\d{3,4})/;
+  const mobileRe   = /09\d{2}[-\s]?\d{3}[-\s]?\d{3}/;
+  const officeRe   = /0[2-8]\d?[-\s]?\d{3,4}[-\s]?\d{3,4}/;
   const urlRe      = /https?:\/\/|www\./i;
   const addressRe  = /[市縣區鄉鎮路街巷弄號樓]/;
   const skipRe     = /LINE\s*ID|WeChat|Wechat|Skype|Tel:|Fax:|傳真|分機|ext/i;
 
-  const email = (rawText.match(emailRe) || [])[0]?.trim() || '';
-  const phone = (rawText.match(phoneRe) || [])[0]?.trim() || '';
+  const email      = (rawText.match(emailRe)  || [])[0]?.trim() || '';
+  const phone      = (rawText.match(mobileRe) || [])[0]?.trim() || '';
+  const officePhone= (rawText.match(officeRe) || [])[0]?.trim() || '';
 
+  const anyPhoneRe = /(?:09\d{2}|0[2-8]\d?)[-\s]?\d{3,4}[-\s]?\d{3,4}/;
   const candidates = lines.filter(l =>
-    !emailRe.test(l) && !phoneRe.test(l) && !urlRe.test(l) &&
+    !emailRe.test(l) && !anyPhoneRe.test(l) && !urlRe.test(l) &&
     !addressRe.test(l) && !skipRe.test(l) && !/^\d+$/.test(l)
   );
 
@@ -382,7 +386,7 @@ function parseCardText(rawText) {
   const title   = candidates.find(l => titleKeyword.test(l))  || '';
   const name    = candidates.find(l => chineseNameRe.test(l) && l !== company && l !== title) || '';
 
-  return { email, phone, name, company, title, lines };
+  return { email, phone, officePhone, name, company, title, lines };
 }
 
 // ── Business card scan ──────────────────────────────────────────────────────
@@ -398,13 +402,14 @@ async function scanCard(input) {
   try {
     const { base64 } = await compressImage(file);
     const rawText = await ocrWithOcrSpace(base64);
-    const { email, phone, name, company, title, lines } = parseCardText(rawText);
+    const { email, phone, officePhone, name, company, title } = parseCardText(rawText);
 
-    if (email)   document.getElementById('femail').value   = email;
-    if (phone)   document.getElementById('fphone').value   = phone;
-    if (name)    document.getElementById('fname').value    = name;
-    if (company) document.getElementById('fcompany').value = company;
-    if (title)   document.getElementById('ftitle').value   = title;
+    if (email)       document.getElementById('femail').value   = email;
+    if (phone)       document.getElementById('fphone').value   = phone;
+    if (officePhone) document.getElementById('fphone2').value  = officePhone;
+    if (name)        document.getElementById('fname').value    = name;
+    if (company)     document.getElementById('fcompany').value = company;
+    if (title)       document.getElementById('ftitle').value   = title;
 
     document.getElementById('scanStatus').textContent = '✅ 資料已自動填入，請確認並補填空白欄位';
     hideLoading();
@@ -521,6 +526,7 @@ async function submitForm() {
     jobTitle:  document.getElementById('ftitle').value.trim(),
     email,
     phone:     document.getElementById('fphone').value.trim(),
+    officePhone: document.getElementById('fphone2').value.trim(),
     showName:  show,
     showDate:  document.getElementById('fdate').value,
     notes, interest,
@@ -554,7 +560,7 @@ async function submitForm() {
 function resetForm() {
   document.getElementById('successScreen').style.display = 'none';
   document.getElementById('cardPreviewWrap').style.display = 'none';
-  ['fname','fcompany','ftitle','femail','fphone','fnotes','finterest','fmemo'].forEach(id => {
+  ['fname','fcompany','ftitle','femail','fphone','fphone2','fnotes','finterest','fmemo'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('fdate').value = new Date().toISOString().split('T')[0];
