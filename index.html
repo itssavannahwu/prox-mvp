@@ -406,9 +406,6 @@ async function scanCard(input) {
     if (company) document.getElementById('fcompany').value = company;
     if (title)   document.getElementById('ftitle').value   = title;
 
-    const rawWrap = document.getElementById('rawTextWrap');
-    rawWrap.textContent = '📋 辨識文字（可對照確認）：\n\n' + lines.join('\n');
-    rawWrap.style.display = 'block';
     document.getElementById('scanStatus').textContent = '✅ 資料已自動填入，請確認並補填空白欄位';
     hideLoading();
     document.getElementById('fname').scrollIntoView({ behavior: 'smooth' });
