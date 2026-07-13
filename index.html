@@ -496,6 +496,7 @@ function toggleVoice() {
   const btn = document.getElementById('micBtn');
   const textarea = document.getElementById('fnotes');
   const baseText = textarea.value;
+  let finalText = '';
 
   recognition.onstart = () => {
     isRecording = true;
@@ -505,12 +506,12 @@ function toggleVoice() {
 
   recognition.onresult = (e) => {
     let interim = '';
-    let final = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
       else interim += e.results[i][0].transcript;
     }
-    textarea.value = baseText + (baseText && final ? '\n' : '') + final + interim;
+    const sep = baseText && (finalText || interim) ? '\n' : '';
+    textarea.value = baseText + sep + finalText + interim;
   };
 
   recognition.onend = () => {
