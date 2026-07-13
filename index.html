@@ -160,7 +160,7 @@ textarea { min-height: 90px; resize: vertical; }
     <div class="card">
       <div class="card-title">現場對話</div>
       <div class="notes-wrap">
-        <textarea id="fnotes" placeholder="他們的需求是什麼？你們聊了什麼？（越詳細，Email 越準）*"></textarea>
+        <textarea id="fnotes" placeholder="他們的需求是什麼？你們聊了什麼？（越詳細，Email 越準）*" onblur="autoDetectInterest()"></textarea>
         <div class="notes-actions">
           <button class="media-btn" id="micBtn" onclick="toggleVoice()">🎤 語音輸入</button>
           <label class="media-btn" for="notePhoto" id="photoNoteLbl">📷 拍筆記辨識</label>
@@ -446,6 +446,36 @@ async function scanNote(input) {
     console.error(e);
   }
   input.value = '';
+}
+
+// ── 自動偵測有興趣的產品/服務 ──────────────────────────────────────────────
+function autoDetectInterest() {
+  const notes = document.getElementById('fnotes').value.trim();
+  const field  = document.getElementById('finterest');
+  if (!notes || field.value.trim()) return;
+
+  const parts = [];
+
+  // 產品編號：A-1234 / AB-12345 格式
+  const codes = [...new Set([...notes.matchAll(/\b[A-Za-z]{1,3}-\d{3,6}\b/g)].map(m => m[0].toUpperCase()))];
+  if (codes.length) parts.push(codes.join('、'));
+
+  // 常見 B2B 行動關鍵字
+  const keywords = [
+    [/打樣/,           '打樣'],
+    [/報價/,           '報價'],
+    [/色卡|新色|開色/, '色卡 / 新色開發'],
+    [/採購|下單|訂購/, '採購洽談'],
+    [/合作/,           '合作方案'],
+    [/簡報|產品資料|型錄/, '產品資料'],
+    [/demo|Demo|展示/, 'Demo 展示'],
+    [/試用|試跑/,      '試用'],
+  ];
+  for (const [re, label] of keywords) {
+    if (re.test(notes)) parts.push(label);
+  }
+
+  if (parts.length) field.value = [...new Set(parts)].join('、');
 }
 
 // ── Voice input ─────────────────────────────────────────────────────────────
